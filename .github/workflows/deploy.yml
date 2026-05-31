@@ -1,0 +1,38 @@
+name: CICD
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Setup Java JDK
+      uses: actions/setup-java@v4
+      with:
+       distribution: 'temurin'
+       java-version: '17'
+       cache: 'maven'
+    - name: build jar
+      run : ./mvnw clean package DskipTests
+    - name: LogIn to Docker Hub
+      run : docker login -u "${{ secrets.docker_username }}" --password-stdin
+    - name : build docker image
+      run : docker build -t ${{ secrets.docker_username }}/spring-boot-cicd-demo:latest
+    - name : push image to docker hub
+      run : docker push {{ secrets.docker_username }}/spring-boot-cicd-demo:latest
+    - name : SSH and deploy to ec2
+      uses: appleboy/ssh-action@v1
+      with:
+         host: ${{ secrets.EC2_HOST }}
+         username: ${{ secrets.EC2_USER }}
+         key: ${{ secrets.EC2_SSH_KEY }}
+         port: ${{ secrets.PORT }}
+         script: |
+          docker stop spring-demo || true
+          docker rm spring-demo || true
+          docker pull ${{ secrets.docker_username }}/spring-boot-cicd-demo:latest
+          docker run -d --name spring-demo -p 8080:8080 ${{ secrets.docker_username }}/spring-boot-cicd-demo:latest
